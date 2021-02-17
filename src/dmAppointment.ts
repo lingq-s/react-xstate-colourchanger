@@ -71,8 +71,15 @@ const grammar2: { [index: string]: { affirm?: string, deny?: string } } = {
 
 }
 
-const intentQuery = (intent: string ) => 
-    fetch(new Request('https://ds-lab2.herokuapp.com/model/parse${intent}')).then(resp => resp.json)
+const proxyurl = "https://cors-anywhere.herokuapp.com/";
+const rasaurl = 'https://rasa-nlu-api-00.herokuapp.com/model/parse'
+const nluRequest = (query: string) =>
+    fetch(new Request(proxyurl + rasaurl, {
+        method: 'POST',
+        headers: { 'Origin': 'http://maraev.me' }, // only required with proxy
+        body: `{"text": "${query}"}`
+    }))
+        .then(data => data.json());
 
 export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
     initial: 'init',
@@ -86,22 +93,28 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
             initial: "prompt",
             on: {
                 RECOGNISED: {
-                    target: "intent",
-                    actions: assign ((context) => { return { intent: context.recResult } }),
+                    actions: assign ((context) => { return { query: context.recResult } }),
+                    target: "query"
                 }
             },
             ...promptAndAsk ('What would you like to do?')
         },
-        intent: {
+        query: {
             invoke:{
-                id: 'nluR',
-                src: (context, event) => intentQuery(context.intent),
-                onDone: {
-                    actions: assign ({ intent: (context:SDSContext, event:any) => event.data }),                 
-                    target: "who"
-                },
-                onError: "who"
+                id: 'rasa',
+                src: (context) => nluRequest(context.query),
+                onDone: [
+                    {cond: (context) => context === "appointment",
+	                target: "who"},
+	                {target: "welcomemessage" },                 
+                ],
+                onError: "welcome"
             }
+        },
+        welcomemessage: {
+            entry: say ("Okay."),
+            always: "init"
+
         },
         who: {
             initial: "prompt",
