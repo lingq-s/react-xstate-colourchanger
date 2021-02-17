@@ -72,7 +72,7 @@ const grammar2: { [index: string]: { affirm?: string, deny?: string } } = {
 }
 
 const proxyurl = "https://cors-anywhere.herokuapp.com/";
-const rasaurl = 'https://rasa-nlu-api-00.herokuapp.com/model/parse'
+const rasaurl = 'https://ds-lab2.herokuapp.com/model/parse'
 const nluRequest = (query: string) =>
     fetch(new Request(proxyurl + rasaurl, {
         method: 'POST',
