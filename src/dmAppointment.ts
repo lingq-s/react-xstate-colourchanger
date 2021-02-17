@@ -9,6 +9,21 @@ function listen(): Action<SDSContext, SDSEvent> {
     return send('LISTEN')
 }
 
+
+function promptAndAsk(prompt: string): MachineConfig<SDSContext, any, SDSEvent> {
+    return ({
+        initial: 'prompt',
+        states: {
+            prompt: {
+                entry: say(prompt),
+                on: { ENDSPEECH : 'ask' }
+            },
+            ask: {
+                entry: send('LISTEN'),
+            },
+        }})
+}
+
 const grammar: { [index: string]: { person?: string, day?: string, time?: string } } = {
     "John": { person: "John Appleseed" },
     "William": { person: "William Windmill "},
@@ -56,6 +71,8 @@ const grammar2: { [index: string]: { affirm?: string, deny?: string } } = {
 
 }
 
+const intentQuery = (intent: string ) => 
+    fetch(new Request('https://ds-lab2.herokuapp.com/model/parse${intent}')).then(resp => resp.json)
 
 export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
     initial: 'init',
@@ -67,9 +84,23 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
         },
         welcome: {
             initial: "prompt",
-            on: { ENDSPEECH: "who" },
-            states: {
-                prompt: { entry: say("Let's create an appointment") }
+            on: {
+                RECOGNISED: {
+                    target: "intent",
+                    actions: assign ((context) => { return { intent: context.recResult } }),
+                }
+            },
+            ...promptAndAsk ('What would you like to do?')
+        },
+        intent: {
+            invoke:{
+                id: 'nluR',
+                src: (context, event) => intentQuery(context.intent),
+                onDone: {
+                    actions: assign ({ intent: (context:SDSContext, event:any) => event.data }),                 
+                    target: "who"
+                },
+                onError: "who"
             }
         },
         who: {
