@@ -1,5 +1,9 @@
 import { MachineConfig, send, Action, assign } from "xstate";
-
+import "./styles.scss";
+import * as React from "react";
+import * as ReactDOM from "react-dom";
+import { useMachine, asEffect } from "@xstate/react";
+import { inspect } from "@xstate/inspect";
 
 function say(text: string): Action<SDSContext, SDSEvent> {
     return send((_context: SDSContext) => ({ type: "SPEAK", value: text }))
@@ -52,34 +56,29 @@ const grammar: { [index: string]: { person?: string, day?: string, time?: string
 
 }
 
-const grammar2: { [index: string]: { affirm?: string, deny?: string } } = {
-    "Yes": { affirm: "yes" },
-    "yes": { affirm: "yes" },
-    "indeed": { affirm: "yes" },
-    "that sounds good": { affirm: "yes" },
-    "yes of course": { affirm: "yes" },
-    "absolutely": { affirm: "yes" },
-    "of course": { affirm: "yes" },
+const grammar2: { [index: string]: boolean } = {
+    "Yes": true,
+    "yes": true,
+    "indeed": true,
+    "that sounds good": true,
+    "yes of course": true,
+    "absolutely": true,
+    "of course": true,
 
-    "No": { deny: "no"}, 
-    "n": { deny: "no"},
-    "I don't think so": { deny: "no"},
-    "no": { deny: "no" },
-    "never": { deny: "no"},
-    "not really": { deny: "no"},
-    "no way": { deny: "no" }
+    "No": false, 
+    "n": false,
+    "I don't think so": false,
+    "no": false,
+    "never": false,
+    "not really": false,
+    "no way": false
 
 }
 
-const proxyurl = "https://cors-anywhere.herokuapp.com/";
-const rasaurl = 'https://ds-lab2.herokuapp.com/model/parse'
-const nluRequest = (query: string) =>
-    fetch(new Request(proxyurl + rasaurl, {
-        method: 'POST',
-        headers: { 'Origin': 'http://maraev.me' }, // only required with proxy
-        body: `{"text": "${query}"}`
-    }))
-        .then(data => data.json());
+let a = grammar2["yes"]
+let b = grammar2["no"]
+
+
 
 export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
     initial: 'init',
@@ -89,28 +88,57 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
                 CLICK: 'welcome'
             }
         },
+
         welcome: {
-            initial: "prompt",
             on: {
                 RECOGNISED: {
-                    actions: assign ((context) => { return { query: context.recResult } }),
+                    actions: assign ((context) => { return { option: context.recResult } }),
                     target: "query"
                 }
             },
             ...promptAndAsk ('What would you like to do?')
         },
+
         query: {
             invoke:{
                 id: 'rasa',
-                src: (context) => nluRequest(context.query),
-                onDone: [
-                    {cond: (context) => context === "appointment",
-	                target: "who"},
-	                {target: "welcomemessage" },                 
-                ],
-                onError: "welcome"
+                src: (context, event) => nluRequest(context.option),
+                onDone: {
+                    target: 'menu',
+                    actions: [assign((context, event) => { return  {option: event.data.intent.name} }),
+                    (context: SDSContext, event: any) => console.log(event.data)]
+                    //actions: assign({ intent: (context: SDSContext, event: any) =>{ return event.data }})
+                },
+                onError: {
+                    target: 'welcome',
+                    actions: (context, event) => console.log(event.data)
+                }
             }
         },
+
+        menu: {
+            initial: "prompt",
+            on: {
+                ENDSPEECH: [
+                    { target: 'welcomemessage', cond: (context) => context.option === 'todo' },
+                    { target: 'welcomemessage', cond: (context) => context.option === 'timer' },
+                    { target: 'who', cond: (context) => context.option === 'appointment' }
+                ]
+            },
+            states: {
+                prompt: {
+                    entry: send((context) => ({
+                        type: "SPEAK",
+                        value: `OK.`
+                    })),
+        },
+     /*            nomatch: {
+                    entry: say("Sorry, I don't understand"),
+                    on: { ENDSPEECH: "prompt" }
+        } */ 
+            }       
+        },
+
         welcomemessage: {
             entry: say ("Okay."),
             always: "init"
@@ -172,11 +200,11 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
             initial: "prompt",
             on: {
                 RECOGNISED: [{
-                    cond: (context) => "affirm" in (grammar2[context.recResult] || {}),
+                    cond: (context) => (grammar2[context.recResult] === a),
                     target: "confirm_whole"
                 },
                 {
-                    cond: (context) => "deny" in (grammar2[context.recResult] || {}),
+                    cond: (context) => (grammar2[context.recResult] === b),
                     target: "time"
                 },
                 { target: ".nomatch"}]
@@ -224,11 +252,11 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
             initial: "prompt",
             on: {
                 RECOGNISED: [{
-                    cond: (context) => "affirm" in (grammar2[context.recResult] || {}),
+                    cond: (context) => (grammar2[context.recResult] === a),
                     target: "end"
                 },
                 {
-                    cond: (context) => "deny" in (grammar2[context.recResult] || {}),
+                    cond: (context) => (grammar2[context.recResult] === b),
                     target: "who"
                 },
                 { target: ".nomatch"}]
@@ -253,11 +281,11 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
             initial: "prompt",
             on: {
                 RECOGNISED: [{
-                    cond: (context) => "affirm" in (grammar2[context.recResult] || {}),
+                    cond: (context) => (grammar2[context.recResult] === a),
                     target: "end"
                 },
                 {
-                    cond: (context) => "deny" in (grammar2[context.recResult] || {}),
+                    cond: (context) => (grammar2[context.recResult] === b),
                     target: "who"
                 },
                 { target: ".nomatch"}]
@@ -286,3 +314,12 @@ export const dmMachine: MachineConfig<SDSContext, any, SDSEvent> = ({
     }
 })
 
+const proxyurl = "https://cors-anywhere.herokuapp.com/";
+const rasaurl = 'https://lingqs-intent.herokuapp.com/model/parse'
+const nluRequest = (text: string) =>
+    fetch(new Request(proxyurl + rasaurl, {
+        method: 'POST',
+        headers: { 'Origin': 'http://maraev.me' }, // only required with proxy
+        body: `{"text": "${text}"}`
+    }))
+        .then(data => data.json());
